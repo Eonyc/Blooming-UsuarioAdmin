@@ -32,7 +32,7 @@ export class Usuario extends Entity {
     type: 'string',
     required: false,
   })
-  clave: string;
+  clave?: string;
 
   @property({
     type: 'boolean',
