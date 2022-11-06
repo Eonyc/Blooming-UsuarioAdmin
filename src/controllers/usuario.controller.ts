@@ -1,3 +1,4 @@
+/* eslint-disable prefer-const */
 import {service} from '@loopback/core';
 import {
   Count,
@@ -5,31 +6,31 @@ import {
   Filter,
   FilterExcludingWhere,
   repository,
-  Where,
+  Where
 } from '@loopback/repository';
 import {
-  post,
-  param,
-  get,
-  getModelSchemaRef,
-  patch,
-  put,
-  del,
-  requestBody,
-  response,
+  del, get,
+  getModelSchemaRef, param, patch, post, put, requestBody,
+  response
 } from '@loopback/rest';
-import {CambioClave, Usuario} from '../models';
+import {Configuracion} from '../llaves/configuracion';
+import {CambioClave, NotificacioCorreo, Usuario} from '../models';
 import {Credenciales} from '../models/credenciales.model';
 import {UsuarioRepository} from '../repositories';
-import {AdmClavesService} from '../services';
+import {AdmClavesService, NotificacionesService} from '../services';
+import {SesionUsuariosService} from '../services/sesion-usuarios.service';
 
 export class UsuarioController {
   constructor(
     @repository(UsuarioRepository)
-    public usuarioRepository : UsuarioRepository,
+    public usuarioRepository: UsuarioRepository,
     @service(AdmClavesService)
-    public servicioClaves: AdmClavesService
-  ) {}
+    public servicioClaves: AdmClavesService,
+    @service(NotificacionesService)
+    public serviviosNotificaciones: NotificacionesService,
+    @service(SesionUsuariosService)
+    private servicioSesioUsiario: SesionUsuariosService
+  ) { }
 
   @post('/usuarios')
   @response(200, {
@@ -51,11 +52,17 @@ export class UsuarioController {
   ): Promise<Usuario> {
     let clave = this.servicioClaves.CrearClaveAle();
     console.log(clave)
-    let claveCifrada= this.servicioClaves.EncrypText(clave)
+    let claveCifrada = this.servicioClaves.EncrypText(clave);
     usuario.clave = claveCifrada;
     let usuarioCreado = await this.usuarioRepository.create(usuario);
-    if(usuarioCreado){
+    if (usuarioCreado) {
       //Envio de correo electronico
+      let datos = new NotificacioCorreo();
+      datos.destinatario = usuario.correo;
+      datos.asunto = Configuracion.asuntoCreacionUsuario;
+      datos.mensaje = `${Configuracion.saludo} ${usuario.nombre} <br />${Configuracion.mensajeCreacionUsuario} ${clave}`
+      this.serviviosNotificaciones.EnviarCorreo(datos);
+
     }
     return usuarioCreado;
   }
@@ -161,81 +168,88 @@ export class UsuarioController {
     await this.usuarioRepository.deleteById(id);
   }
 
-//**Métodos adicionales*/
+  //**Métodos adicionales*/
 
-@post('/identificador-usuarios')
-@response(200, {
-  description: 'Usuario identificado',
-  content: {'application/json': {schema: getModelSchemaRef(Credenciales)}},
-})
-async idenUsuario(
-  @requestBody({
-    content: {
-      'application/json': {
-        schema: getModelSchemaRef(Credenciales, {
-          title: 'Identificador de usuario',
-        }),
-      },
-    },
+  @post('/identificador-usuarios')
+  @response(200, {
+    description: 'Usuario identificado',
+    content: {'application/json': {schema: getModelSchemaRef(Credenciales)}},
   })
-  credenciales: Credenciales,
-): Promise<Usuario | null> {
-  let usuario = await this.usuarioRepository.findOne({
-    where: {
-      correo: credenciales.usuario,
-      clave: credenciales.clave
+  async idenUsuario(
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(Credenciales, {
+            title: 'Identificador de usuario',
+          }),
+        },
+      },
+    })
+    credenciales: Credenciales,
+  ): Promise<object| null> {
+    let usuario = await this.servicioSesioUsiario.IdentificarUsuario(credenciales);
+    let tkn = "";
+    if (usuario) {
+      usuario.clave = "";
+      //Generador de token para agregarlo a la respuesta
+      tkn = await this.servicioSesioUsiario.GeneradorToken(usuario);
     }
-  });
-  if(usuario){
-    //Generador de token para agregarlo a la respuesta
+    return {
+      token: tkn,
+      usuario: usuario
+    };
   }
-  return usuario;
-}
 
-@post('/cambiar-clave')
-@response(200, {
-  description: 'Cambio de clave del usuario',
-  content: {'application/json': {schema: getModelSchemaRef(CambioClave)}},
-})
-async cambiarClave(
-  @requestBody({
-    content: {
-      'application/json': {
-        schema: getModelSchemaRef(CambioClave, {
-          title: 'Cambio de clave del usuario',
-        }),
-      },
-    },
+  @post('/cambiar-clave')
+  @response(200, {
+    description: 'Cambio de clave del usuario',
+    content: {'application/json': {schema: getModelSchemaRef(CambioClave)}},
   })
-  credencialesClave: CambioClave,
-): Promise<boolean> {
-  let respuesta = await this.servicioClaves.CambiarClave(credencialesClave);
-  if(respuesta){
-    //Servicio de notificaciones para enviar correo al usuario
-  }
-  return respuesta;
-}
-
-@post('/recuperar-clave')
-@response(200, {
-  description: 'Recuperación de clave del usuario',
-  content: {'application/json': {schema: {}}},
-})
-async recuperarClave(
-  @requestBody({
-    content: {
-      'application/json': {
-
+  async cambiarClave(
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(CambioClave, {
+            title: 'Cambio de clave del usuario',
+          }),
+        },
       },
-    },
-  })
-  correo: string,
-): Promise<Usuario | null> {
-  let respuesta = await this.servicioClaves.RecuperarClave(correo);
-  if(usuario){
-    //Servicio de notificaciones para enviar correo al usuario con nueva clave
+    })
+    credencialesClave: CambioClave,
+  ): Promise<Boolean> {
+    let usuario = await this.servicioClaves.CambiarClave(credencialesClave);
+    if (usuario) {
+      const datos = new NotificacioCorreo();
+      datos.destinatario = usuario.correo;
+      datos.asunto = Configuracion.asuntoCambioClave;
+      datos.mensaje = `${Configuracion.saludo} ${usuario.nombre} <br />${Configuracion.mensajeCambioClave}`
+      //Servicio de notificaciones para enviar correo al usuario
+      this.serviviosNotificaciones.EnviarCorreo(datos);
+
+    }
+    return usuario != null;
   }
-  return usuario;
-}
+
+  @post('/recuperar-clave')
+  @response(200, {
+    description: 'Recuperación de clave del usuario',
+    content: {'application/json': {schema: {}}},
+  })
+  async recuperarClave(
+    @requestBody({
+      content: {
+        'application/json': {
+
+        },
+      },
+    })
+    correo: string,
+  ): Promise<Usuario | null> {
+    let usuario = await this.servicioClaves.RecuperarClave(correo);
+    if (usuario) {
+      //Servicio de notificaciones para enviar correo al usuario con nueva clave
+    }
+    return usuario;
+  }
 
 }
