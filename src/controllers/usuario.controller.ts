@@ -14,7 +14,7 @@ import {
   response
 } from '@loopback/rest';
 import {Configuracion} from '../llaves/configuracion';
-import {CambioClave, NotificacioCorreo, Usuario} from '../models';
+import {CambioClave, CredencialesRecuperacionClave, NotificacioCorreo, Usuario} from '../models';
 import {Credenciales} from '../models/credenciales.model';
 import {UsuarioRepository} from '../repositories';
 import {AdmClavesService, NotificacionesService} from '../services';
@@ -219,7 +219,7 @@ export class UsuarioController {
   ): Promise<Boolean> {
     let usuario = await this.servicioClaves.CambiarClave(credencialesClave);
     if (usuario) {
-      const datos = new NotificacioCorreo();
+      let datos = new NotificacioCorreo();
       datos.destinatario = usuario.correo;
       datos.asunto = Configuracion.asuntoCambioClave;
       datos.mensaje = `${Configuracion.saludo} ${usuario.nombre} <br />${Configuracion.mensajeCambioClave}`
@@ -243,9 +243,9 @@ export class UsuarioController {
         },
       },
     })
-    correo: string,
+    credenciales: CredencialesRecuperacionClave,
   ): Promise<Usuario | null> {
-    let usuario = await this.servicioClaves.RecuperarClave(correo);
+    let usuario = await this.servicioClaves.RecuperarClave(credenciales);
     if (usuario) {
       //Servicio de notificaciones para enviar correo al usuario con nueva clave
     }

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { /* inject, */ BindingScope, injectable} from '@loopback/core';
 import {repository} from '@loopback/repository';
-import {CambioClave, Usuario} from '../models';
+import {CambioClave, Credenciales, CredencialesRecuperacionClave, Usuario} from '../models';
 import {UsuarioRepository} from '../repositories';
 const generator = require('generate-password');
 const CryptoJS = require("crypto-js");
@@ -17,7 +17,7 @@ export class AdmClavesService {
    */
 
   async CambiarClave(credencialesClave: CambioClave): Promise<Usuario | null> {
-    const usuario = await this.usuarioRepository.findOne({
+    let usuario = await this.usuarioRepository.findOne({
       where: {
         _id: credencialesClave.id_usuario,
         clave: credencialesClave.clave_actual
@@ -33,14 +33,14 @@ export class AdmClavesService {
     }
   }
 
-  async RecuperarClave(correo: string): Promise<Usuario | null> {
-    const usuario = await this.usuarioRepository.findOne({
+  async RecuperarClave(credenciales: CredencialesRecuperacionClave): Promise<Usuario | null> {
+    let usuario = await this.usuarioRepository.findOne({
       where: {
-        correo: correo
+        correo: credenciales.correo
       }
     });
     if (usuario) {
-      const clave = this.CrearClaveAle()
+      let clave = this.CrearClaveAle()
       usuario.clave = this.EncrypText(clave);
       await this.usuarioRepository.updateById(usuario._id, usuario)
 
@@ -52,7 +52,7 @@ export class AdmClavesService {
   }
 
   CrearClaveAle(): string {
-    const password = generator.generate({
+    let password = generator.generate({
       length: 10,
       numbers: true,
       uppercase: true
@@ -61,7 +61,7 @@ export class AdmClavesService {
   }
 
   EncrypText(texto: string) {
-    const texCryp = CryptoJS.MD5(texto).toString();
+    let texCryp = CryptoJS.MD5(texto).toString();
     return texCryp;
   }
 }
